@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { getIcon } from '../utils/iconUtils';
+import { 
+  fetchEmployees, 
+  createEmployee, 
+  updateEmployee, 
+  deleteEmployee 
+} from '../services/employeeService';
+import { fetchDepartments } from '../services/departmentService';
+import { fetchLocations } from '../services/locationService';
 
-// Sample employee data
+// Fallback employee data in case API fails
 const initialEmployees = [
   {
     id: 1,
@@ -68,22 +76,58 @@ const initialEmployees = [
   }
 ];
 
-// Department options
-const departments = [
-  "Engineering", "Human Resources", "Marketing", "Finance", "Operations", "Sales", "Customer Support", "Legal", "IT"
-];
-
-// Location options
-const locations = [
-  "New York", "Chicago", "San Francisco", "Miami", "Dallas", "Seattle", "Boston", "Austin", "Remote"
-];
-
 // Status options
 const statuses = [
   "Active", "Inactive", "On Leave", "On Notice"
 ];
 
-const MainFeature = () => {
+const MainFeature = ({ isAuthenticated }) => {
+  // State for API data
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
+  const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Load data from APIs
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const loadData = async () => {
+      try {
+        // Load employees
+        setIsLoadingEmployees(true);
+        const employeeData = await fetchEmployees();
+        setEmployees(employeeData.length > 0 ? employeeData : initialEmployees);
+        setIsLoadingEmployees(false);
+        
+        // Load departments
+        setIsLoadingDepartments(true);
+        const departmentData = await fetchDepartments();
+        // Extract department names
+        const deptNames = departmentData.map(dept => dept.Name);
+        setDepartments(deptNames.length > 0 ? deptNames : ["Engineering", "Human Resources", "Marketing", "Finance", "Operations", "Sales", "Customer Support", "Legal", "IT"]);
+        setIsLoadingDepartments(false);
+        
+        // Load locations
+        setIsLoadingLocations(true);
+        const locationData = await fetchLocations();
+        // Extract location names
+        const locNames = locationData.map(loc => loc.Name);
+        setLocations(locNames.length > 0 ? locNames : ["New York", "Chicago", "San Francisco", "Miami", "Dallas", "Seattle", "Boston", "Austin", "Remote"]);
+        setIsLoadingLocations(false);
+      } catch (error) {
+        console.error("Error loading data:", error);
+        setError("Failed to load data. Please try again later.");
+      }
+    };
+    
+    loadData();
+  }, [isAuthenticated]);
   const [employees, setEmployees] = useState(initialEmployees);
   const [filterDepartment, setFilterDepartment] = useState("");
   const [filterLocation, setFilterLocation] = useState("");
@@ -166,30 +210,56 @@ const MainFeature = () => {
 
   // Save employee (add or update)
   const saveEmployee = () => {
+    setIsSaving(true);
+    
     // Validation
     if (!currentEmployee.name || !currentEmployee.email || !currentEmployee.department || !currentEmployee.designation) {
       toast.error("Please fill all required fields.");
+      setIsSaving(false);
       return;
     }
     
-    if (currentEmployee.id) {
-      // Update existing employee
-      setEmployees(prev => 
-        prev.map(emp => emp.id === currentEmployee.id ? currentEmployee : emp)
-      );
-      toast.success("Employee updated successfully!");
-    } else {
-      // Add new employee
-      const newEmployee = {
-        ...currentEmployee,
-        id: Date.now() // Simple ID generation
-      };
-      setEmployees(prev => [...prev, newEmployee]);
-      toast.success("Employee added successfully!");
-    }
+    // Prepare employee data for API
+    const employeeData = {
+      Name: currentEmployee.name,
+      email: currentEmployee.email,
+      department: currentEmployee.department,
+      designation: currentEmployee.designation,
+      location: currentEmployee.location,
+      status: currentEmployee.status,
+      joinDate: currentEmployee.joinDate,
+      phone: currentEmployee.phone,
+      avatar: currentEmployee.avatar
+    };
     
-    setIsModalOpen(false);
-  };
+    // API call based on whether it's update or create
+    const apiCall = async () => {
+      try {
+        if (currentEmployee.id) {
+          // Update existing employee
+          await updateEmployee(currentEmployee.id, employeeData);
+          setEmployees(prev => 
+            prev.map(emp => emp.id === currentEmployee.id ? {...emp, ...employeeData} : emp)
+          );
+          toast.success("Employee updated successfully!");
+        } else {
+          // Add new employee
+          const newEmployee = await createEmployee(employeeData);
+          setEmployees(prev => [...prev, {...newEmployee, id: newEmployee.Id}]);
+          toast.success("Employee added successfully!");
+        }
+        setIsModalOpen(false);
+      } catch (error) {
+        console.error("API error:", error);
+        toast.error(currentEmployee.id ? "Failed to update employee" : "Failed to add employee");
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    
+    apiCall();
+    } else {
+  
 
   // Delete employee
   const deleteEmployee = (id) => {
@@ -687,7 +757,7 @@ const MainFeature = () => {
                 <button 
                   onClick={saveEmployee}
                   className="btn-primary"
-                >
+                  disabled={isSaving}>
                   {currentEmployee.id ? "Update Employee" : "Add Employee"}
                 </button>
               </div>
@@ -845,11 +915,12 @@ const MainFeature = () => {
                     <XIcon className="w-4 h-4 mr-2" />
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={() => deleteEmployee(selectedEmployee.id)}
                     className="btn bg-red-500 hover:bg-red-600 text-white focus:ring-red-500"
-                  >
-                    <TrashIcon className="w-4 h-4 mr-2" />
+                    disabled={isDeleting}
+                  > 
+                    {isDeleting ? 'Deleting...' : <><TrashIcon className="w-4 h-4 mr-2" />
                     Delete
                   </button>
                 </div>

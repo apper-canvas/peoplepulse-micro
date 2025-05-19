@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { getIcon } from '../utils/iconUtils';
 import MainFeature from '../components/MainFeature';
+import { AuthContext } from '../App';
+import { useNavigate } from 'react-router-dom';
+import { fetchEvents } from '../services/eventService';
+import { fetchEmployees } from '../services/employeeService';
 
-const Home = ({ isDarkMode, toggleDarkMode }) => {
+const Home = ({ isAuthenticated, isDarkMode, toggleDarkMode }) => {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { logout } = useContext(AuthContext);
+  const navigate = useNavigate();
   // HRMS modules
   const modules = [
     { id: 'dashboard', name: 'Dashboard', icon: 'layout-dashboard' },
@@ -28,6 +36,49 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
   const BellIcon = getIcon('bell');
   const UserIcon = getIcon('user');
   const LogOutIcon = getIcon('log-out');
+  
+  // Check authentication and redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, navigate]);
+  
+  // Load dashboard data
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      if (!isAuthenticated) return;
+      
+      setIsLoading(true);
+      try {
+        // Fetch employee stats
+        const employees = await fetchEmployees();
+        const totalEmployees = employees.length;
+        const onLeaveToday = employees.filter(emp => emp.status === "On Leave").length;
+        const thisMonthJoiners = employees.filter(emp => {
+          const joinDate = new Date(emp.joinDate);
+          const now = new Date();
+          return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
+        }).length;
+        
+        // Fetch upcoming events
+        const upcomingEvents = await fetchEvents();
+        
+        setDashboardStats({
+          totalEmployees,
+          onLeaveToday,
+          thisMonthJoiners,
+          pendingApprovals: 5 // Placeholder, would come from a different table typically
+        });
+        
+        setEvents(upcomingEvents);
+      } catch (error) {
+        toast.error("Error loading dashboard data");
+      }
+      setIsLoading(false);
+    };
+    loadDashboardData();
+  }, [isAuthenticated]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -45,6 +96,10 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
         icon: '🔧'
       });
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
   };
 
   return (
@@ -116,7 +171,7 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
               <p className="text-sm font-medium truncate">Admin User</p>
               <p className="text-xs text-surface-500 dark:text-surface-400 truncate">admin@peoplepulse.com</p>
             </div>
-            <button className="p-1.5 rounded-full hover:bg-surface-100 dark:hover:bg-surface-700">
+            <button onClick={handleLogout} className="p-1.5 rounded-full hover:bg-surface-100 dark:hover:bg-surface-700">
               <LogOutIcon className="w-4 h-4" />
             </button>
           </div>
@@ -166,13 +221,20 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
               {activeModule === 'dashboard' && (
                 <div>
                   <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+                  
+                  {isLoading ? (
+                    <div className="text-center py-12">
+                      <p>Loading dashboard data...</p>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     {[
-                      { title: 'Total Employees', value: '218', icon: 'users', color: 'bg-blue-500' },
-                      { title: 'On Leave Today', value: '8', icon: 'calendar', color: 'bg-amber-500' },
-                      { title: 'This Month Joiners', value: '12', icon: 'user-plus', color: 'bg-green-500' },
-                      { title: 'Pending Approvals', value: '5', icon: 'clipboard-check', color: 'bg-purple-500' }
-                    ].map((stat, index) => {
+                      { title: 'Total Employees', value: dashboardStats?.totalEmployees || '0', icon: 'users', color: 'bg-blue-500' },
+                      { title: 'On Leave Today', value: dashboardStats?.onLeaveToday || '0', icon: 'calendar', color: 'bg-amber-500' },
+                      { title: 'This Month Joiners', value: dashboardStats?.thisMonthJoiners || '0', icon: 'user-plus', color: 'bg-green-500' },
+                      { title: 'Pending Approvals', value: dashboardStats?.pendingApprovals || '0', icon: 'clipboard-check', color: 'bg-purple-500' }
+                    ]
+                    .map((stat, index) => {
                       const StatIcon = getIcon(stat.icon);
                       return (
                         <div key={index} className="card hover:shadow-lg transition-shadow">
@@ -189,7 +251,7 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
                       );
                     })}
                   </div>
-                  
+                  )}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2">
                       <div className="card h-full">
@@ -211,9 +273,18 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
                       <div className="card">
                         <h3 className="font-bold mb-4">Upcoming Events</h3>
                         <div className="space-y-4">
-                          {[
-                            { title: "Team Meeting", date: "Today, 3:00 PM", type: "meeting" },
-                            { title: "Sarah's Birthday", date: "Tomorrow", type: "birthday" },
+                          {isLoading ? (
+                            <p>Loading events...</p>
+                          ) : events.length > 0 ? (
+                            events.slice(0, 3).map((event, index) => {
+                              const EventIcon = getIcon(getEventIcon(event.type));
+                              return renderEventItem(event, EventIcon, index);
+                            })
+                          ) : (
+                            // Fallback to mock data if no events
+                            [
+                            { title: "Team Meeting", date: "Today, 3:00 PM", type: "meeting" }, 
+                            { title: "Sarah's Birthday", date: "Tomorrow", type: "birthday" }, 
                             { title: "Project Deadline", date: "Dec 15, 2023", type: "deadline" }
                           ].map((event, index) => {
                             const getEventIcon = (type) => {
@@ -225,18 +296,8 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
                               }
                             };
                             const EventIcon = getIcon(getEventIcon(event.type));
-                            return (
-                              <div key={index} className="flex items-start space-x-3">
-                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-                                  <EventIcon className="w-4 h-4 text-primary" />
-                                </div>
-                                <div>
-                                  <p className="font-medium">{event.title}</p>
-                                  <p className="text-sm text-surface-500 dark:text-surface-400">{event.date}</p>
-                                </div>
-                              </div>
-                            );
-                          })}
+                            return renderEventItem(event, EventIcon, index);
+                          }))}
                         </div>
                       </div>
                     </div>
@@ -270,7 +331,7 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
                     </div>
                   </div>
                   
-                  <MainFeature />
+                  <MainFeature isAuthenticated={isAuthenticated} />
                 </div>
               )}
               
@@ -300,6 +361,33 @@ const Home = ({ isDarkMode, toggleDarkMode }) => {
       </div>
     </div>
   );
+  
+  // Utility function to get event icon
+  function getEventIcon(type) {
+    switch(type) {
+      case 'meeting': return 'users';
+      case 'birthday': return 'cake';
+      case 'deadline': return 'alert-circle';
+      default: return 'calendar';
+    }
+  }
+  
+  // Utility function to render event items
+  function renderEventItem(event, EventIcon, index) {
+    return (
+      <div key={index} className="flex items-start space-x-3">
+        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
+          <EventIcon className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <p className="font-medium">{event.title || event.Name}</p>
+          <p className="text-sm text-surface-500 dark:text-surface-400">
+            {event.date || new Date(event.date).toLocaleString()}
+          </p>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default Home;
