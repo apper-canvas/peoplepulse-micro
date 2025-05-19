@@ -1,7 +1,8 @@
 import { useState, useEffect, createContext } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Home from './pages/Home';
 import NotFound from './pages/NotFound';
@@ -9,6 +10,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Callback from './pages/Callback';
 import ErrorPage from './pages/ErrorPage';
+import LandingPage from './pages/LandingPage';
 import { setUser, clearUser } from './store/userSlice';
 
 // Create auth context
@@ -118,6 +120,11 @@ function App() {
     isInitialized,
     logout: async () => {
       try {
+        // Show toast notification
+        toast.success("Successfully logged out", {
+          position: "top-right",
+          autoClose: 3000,
+        });
         const { ApperUI } = window.ApperSDK;
         await ApperUI.logout();
         dispatch(clearUser());
@@ -144,19 +151,25 @@ function App() {
       />
       <div className="min-h-screen transition-colors duration-200">
         <Routes>
-          <Route path="/" element={<Home isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
-          <Route path="*" element={<NotFound isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
-        </Routes>
-      </div>
-    </>
-  );
-}
-
-export default App;
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/callback" element={<Callback />} />
           <Route path="/error" element={<ErrorPage />} />
-          <Route path="/" element={<Home isAuthenticated={isAuthenticated} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
+          <Route 
+            path="/" 
+            element={isAuthenticated 
+              ? <Home isAuthenticated={isAuthenticated} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} /> 
+              : <LandingPage isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} 
+          />
+          <Route path="/dashboard" element={isAuthenticated 
+            ? <Home isAuthenticated={isAuthenticated} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} /> 
+            : <Navigate to="/login" />} 
+          />
           <Route path="*" element={<NotFound isAuthenticated={isAuthenticated} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
+        </Routes>
+      </div>
     </AuthContext.Provider>
+  );
+}
+
+export default App;

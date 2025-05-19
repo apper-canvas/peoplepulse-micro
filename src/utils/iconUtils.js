@@ -1,22 +1,15 @@
 import * as Icons from 'lucide-react';
 
-export const getIcon = (iconName) => {
-  // Try direct match first
-  if (Icons[iconName] && typeof Icons[iconName] === 'function') {
-    return Icons[iconName];
-  }
-  
-  // Convert kebab-case to PascalCase
-  if (typeof iconName === 'string' && iconName.includes('-')) {
-    const pascalCase = iconName
-      .split('-')
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-      .join('');
-    if (Icons[pascalCase] && typeof Icons[pascalCase] === 'function') {
-      return Icons[pascalCase];
-    }
-  }
-  
-  // Fallback to Smile icon
-  return Icons.Smile;
+/**
+ * Get an icon component by name
+ * @param {string} name - Icon name from lucide-react library
+ * @returns {React.ComponentType<any>} Icon component
+ */
+export const getIcon = (name) => {
+  // Convert kebab case to pascal case (e.g., 'arrow-right' to 'ArrowRight')
+  const pascalCaseName = name
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+  return Icons[pascalCaseName] || Icons.HelpCircle; // Fallback to HelpCircle if icon not found
 };
